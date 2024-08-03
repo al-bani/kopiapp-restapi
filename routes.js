@@ -1,12 +1,12 @@
 const express = require('express');
-const { register, login, menu, getListMenuType, getDetails } = require('./apps');
+const { register, login, menu, getListMenuType, getDetails} = require('./apps');
 const router = express.Router();
 
 const foodsRouter = express.Router();
 const drinksRouter = express.Router();
 
-
 router.post('/register', (req, res, next) => {
+    
     register(req, res);
 });
 
@@ -23,7 +23,11 @@ foodsRouter.post('/', (req, res, next) => {
 });
 
 foodsRouter.get('/:food_id', (req, res, next) => {
-    getDetails(res, 'foods', req.params.food_id);
+    getDetails(req, res, 'foods', req.params.food_id);
+});
+
+foodsRouter.get('/:food_id/image', (req, res, next) => {
+    getImage(req, res, 'foods', req.params.food_id);
 });
 
 drinksRouter.post('/', (req, res, next) => {
@@ -31,9 +35,15 @@ drinksRouter.post('/', (req, res, next) => {
 });
 
 drinksRouter.get('/:drink_id', (req, res, next) => {
-    getDetails(res, 'drinks', req.params.drink_id);
+    getDetails(req, res, 'drinks', req.params.drink_id);
 });
 
+drinksRouter.get('/:drink_id/image', (req, res, next) => {
+    getImage(req, res, 'drinks', req.params.drink_id);
+});
+
+router.use("/images/drink", express.static('assets/drinks'));
+router.use("/images/food", express.static('assets/foods'));
 router.use('/menu/foods', foodsRouter);
 router.use('/menu/drinks', drinksRouter);
 

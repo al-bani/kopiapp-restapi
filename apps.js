@@ -3,6 +3,8 @@ const dayjs = require('dayjs');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const dateNow = dayjs().format('YYYY-MM-DD HH:mm:ss');
+require('dotenv').config();
+const fs = require('fs');
 
 const register = (req, res) => {
     db.query(`SELECT email, phone_number FROM customer WHERE email = ${db.escape(req.body.email)} OR phone_number = ${db.escape(req.body.phone_number)};`,
@@ -65,7 +67,8 @@ const register = (req, res) => {
 }
 
 const login = (req, res) => {
-    db.query(`SELECT * FROM customer WHERE email = ${db.escape(req.body.email)} OR phone_number = ${db.escape(req.body.phone_number)};`,
+    let query =`SELECT * FROM customer WHERE email = ${db.escape(req.body.email)} OR phone_number = ${db.escape(req.body.phone_number)};`;
+    db.query(query,
     (err, result) => {
         if (err) {
             return res.status(500).send({
@@ -84,7 +87,7 @@ const login = (req, res) => {
                         msg: err
                     });
                 } else if (bResult) {
-                    const token = jwt.sign({ id: result[0].customer_id }, 'the-super-strong-secret');
+                    const token = signJwt(result[0].customer_id);
                     db.query(
                         `UPDATE customer SET last_login = ${db.escape(dateNow)} WHERE customer_id = '${result[0].customer_id}'`,
                         (err, result) => {
@@ -111,6 +114,12 @@ const login = (req, res) => {
 }
 
 const menu = (req, res) => {
+    
+    let resultVerify = verifyTokenJWT(req.headers.authorization);
+    if (!resultVerify) {
+        return res.status(401).send({ msg: 'Unauthorized' });
+    }
+
     const sort = req.body.sort;
     let sortQuery = ``;
 
@@ -139,7 +148,7 @@ const menu = (req, res) => {
     let foodQuery = categoryFood.map(data => ` food.category = ${db.escape(data)}`).join(' OR ');
     let drinkQuery = categoryDrink.map(data => ` drink.category = ${db.escape(data)}`).join(' OR ');
 
-    let query = `SELECT name,price,total_buying, recomended FROM drinks AS drink WHERE ` + drinkQuery + ` UNION ALL SELECT name,price,total_buying, recomended FROM foods AS food WHERE` + foodQuery + sortQuery;
+    let query = `SELECT * FROM drinks AS drink WHERE ` + drinkQuery + ` UNION ALL SELECT * FROM foods AS food WHERE` + foodQuery + sortQuery;
     
     db.query(query, (err, result) => {
         if (err) {
@@ -154,6 +163,12 @@ const menu = (req, res) => {
 }
 
 const getListMenuType = (req, res, type) => {
+
+    let resultVerify = verifyTokenJWT(req.headers.authorization);
+    if (!resultVerify) {
+        return res.status(401).send({ msg: 'Unauthorized' });
+    }
+    
     const categoryData =  req.body.category.filter(item => item !== null && item !== undefined);
     const sort = req.body.sort;
 
@@ -180,7 +195,7 @@ const getListMenuType = (req, res, type) => {
             break;
     }
     
-    let query = `SELECT name,category,price,recomended FROM ${type} WHERE`;
+    let query = `SELECT * FROM ${type} WHERE`;
     query += categoryData.map(data => ` category = ${db.escape(data)}`).join(' OR ');
     query += sortQuery;
 
@@ -196,10 +211,16 @@ const getListMenuType = (req, res, type) => {
     });
 }
 
-const getDetails = (res, type, id) => {
+const getDetails = (req, res, type, id) => {
+
+    let resultVerify = verifyTokenJWT(req.headers.authorization);
+    if (!resultVerify) {
+        return res.status(401).send({ msg: 'Unauthorized' });
+    }
+
     const columnId = type === 'foods' ? 'food_id' : 'drink_id';
 
-    let query = `SELECT name, price, category, description, total_buying, recomended FROM ${type} WHERE ${columnId} = ${db.escape(id)}`;
+    let query = `SELECT * FROM ${type} WHERE ${columnId} = ${db.escape(id)}`;
 
     db.query(query, (err, result) => {
         if (err) {
@@ -213,10 +234,44 @@ const getDetails = (res, type, id) => {
     });
 }
 
+function signJwt (customer_id){
+    const privateKey = fs.readFileSync('.settings/private/private.key', 'utf8');
+    const passphrase = process.env.PRIVATE_KEY_PASSPHRASE;
+
+    const payload = {cid : customer_id};
+    const token = jwt.sign(payload, {key: privateKey, passphrase : passphrase}, {algorithm : 'RS256'});
+    return token;
+}
+
+function verifyTokenJWT (token){
+    if(!token || !token.startsWith(process.env.PASSKEY) || !token.split(' ')[1]){
+        return false;
+    }
+
+    token = token.split(' ')[1];
+
+    const publicKey = fs.readFileSync('.settings/public.key', 'utf8');
+
+    let result = false;
+    
+    jwt.verify(token, publicKey, (err, decoded) => {
+       
+        if (err === null) {
+            result = true;
+        } else {
+            result = false;
+        }
+       
+    });
+
+    return result;
+}
+
+
 module.exports = {
     register,
     login,
     menu,
     getListMenuType,
-    getDetails
+    getDetails,
 }
