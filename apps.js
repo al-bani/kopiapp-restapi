@@ -5,6 +5,7 @@ const jwt = require('jsonwebtoken');
 const dateNow = dayjs().format('YYYY-MM-DD HH:mm:ss');
 require('dotenv').config();
 const fs = require('fs');
+const path = require('path');
 
 const register = (req, res) => {
     db.query(`SELECT email, phone_number FROM customer WHERE email = ${db.escape(req.body.email)} OR phone_number = ${db.escape(req.body.phone_number)};`,
@@ -114,12 +115,15 @@ const login = (req, res) => {
 }
 
 const menu = (req, res) => {
-    
-    let resultVerify = verifyTokenJWT(req.headers.authorization);
-    if (!resultVerify) {
+    let token = req.headers.authorization;
+    const resultVerify = verifyTokenJWT(token, req.body.customer_id);
+   
+    if (resultVerify === null) {
         return res.status(401).send({ msg: 'Unauthorized' });
+    } else {
+       token = resultVerify;
     }
-
+  
     const sort = req.body.sort;
     let sortQuery = ``;
 
@@ -155,7 +159,15 @@ const menu = (req, res) => {
             return res.status(500).send({ msg: 'Internal Server Error', err });
         }
         if(result.length){
-            return res.status(200).send(result);
+            const modifiedResult = [
+                {
+                    token
+                },
+                
+                ...result
+            ];
+
+            return res.status(200).send(modifiedResult);
         } else {
             return res.status(404).send({ msg: 'No data found' });
         }
@@ -164,9 +176,13 @@ const menu = (req, res) => {
 
 const getListMenuType = (req, res, type) => {
 
-    let resultVerify = verifyTokenJWT(req.headers.authorization);
-    if (!resultVerify) {
+    let token = req.headers.authorization;
+    const resultVerify = verifyTokenJWT(token, req.body.customer_id);
+
+    if (resultVerify === null) {
         return res.status(401).send({ msg: 'Unauthorized' });
+    } else {
+        token = resultVerify;
     }
     
     const categoryData =  req.body.category.filter(item => item !== null && item !== undefined);
@@ -204,7 +220,15 @@ const getListMenuType = (req, res, type) => {
             return res.status(500).send({ msg: 'Internal Server Error', err });
         }
         if(results.length){
-            return res.status(200).send(results);
+            const modifiedResult = [
+                {
+                    token,
+                },
+                
+                ...results
+            ];
+
+            return res.status(200).send(modifiedResult);
         } else {
             return res.status(404).send({ msg: 'No data found' });
         }
@@ -213,9 +237,13 @@ const getListMenuType = (req, res, type) => {
 
 const getDetails = (req, res, type, id) => {
 
-    let resultVerify = verifyTokenJWT(req.headers.authorization);
-    if (!resultVerify) {
+    const token = req.headers.authorization;
+    const resultVerify = verifyTokenJWT(token, req.body.customer_id);
+
+    if (resultVerify === null) {
         return res.status(401).send({ msg: 'Unauthorized' });
+    } else {
+        token = resultVerify;
     }
 
     const columnId = type === 'foods' ? 'food_id' : 'drink_id';
@@ -227,46 +255,107 @@ const getDetails = (req, res, type, id) => {
             return res.status(500).send({ msg: 'Internal Server Error', err });
         }
         if(result.length){
-            return res.status(200).send(result);
+            const modifiedResult = [
+                {
+                    token,
+                    time_expired : `${timeRemaining} seconds`
+                },
+                
+                ...result
+            ];
+
+            return res.status(200).send(modifiedResult);
         } else {
             return res.status(404).send({ msg: 'No data found' });
         }
     });
 }
 
+
 function signJwt (customer_id){
     const privateKey = fs.readFileSync('.settings/private/private.key', 'utf8');
+    resetPK();
     const passphrase = process.env.PRIVATE_KEY_PASSPHRASE;
+    const timeExpiredToken = '1m';
 
     const payload = {cid : customer_id};
-    const token = jwt.sign(payload, {key: privateKey, passphrase : passphrase}, {algorithm : 'RS256'});
+    const token = jwt.sign(payload, {key: privateKey, passphrase}, {algorithm: 'RS256', expiresIn: timeExpiredToken});
+    console.log(`your token has generated, will expired in ${timeExpiredToken}`);
     return token;
 }
 
-function verifyTokenJWT (token){
+function verifyTokenJWT (token, customer_id){
     if(!token || !token.startsWith(process.env.PASSKEY) || !token.split(' ')[1]){
-        return false;
+        return null;
     }
-
+    
     token = token.split(' ')[1];
-
     const publicKey = fs.readFileSync('.settings/public.key', 'utf8');
 
-    let result = false;
-    
-    jwt.verify(token, publicKey, (err, decoded) => {
-       
-        if (err === null) {
-            result = true;
-        } else {
-            result = false;
-        }
-       
-    });
+    const timeRemain = getTokenTimeRemaining(token);
+    console.log(`token will expired in ${timeRemain} seconds`);
 
-    return result;
+    try {
+        const decoded = jwt.verify(token, publicKey);
+        return token;
+    } catch (err) {
+        if (err.name === 'TokenExpiredError') {
+            console.log('token has been expired, regenerating token...')
+            const newToken = signJwt(customer_id);
+            console.log('token has been generated');
+            return newToken;
+        }
+    }
+    
+    return null;
 }
 
+function getTokenTimeRemaining(token) {
+    const publicKey = fs.readFileSync('.settings/public.key', 'utf8');
+    
+    try {
+        const decoded = jwt.verify(token, publicKey, { ignoreExpiration: true });
+        const expirationTime = decoded.exp * 1000;
+        const currentTime = Date.now();
+        const timeRemaining = expirationTime - currentTime;
+        
+        if (timeRemaining > 0) {
+            return Math.floor(timeRemaining / 1000); 
+        } else {
+            return 0; 
+        }
+    } catch (err) {
+        console.error('Error while convertion token', err);
+        return -1; 
+    }
+}
+
+function resetPK(){
+    console.log('reset PK dilakukan');
+    let value = Math.random().toString(36).substr(2, 30);
+    value = bcrypt.hashSync(value, 10);
+
+    try {
+        const envPath = path.resolve(__dirname, '.env');
+
+        let envContent = fs.readFileSync(envPath, 'utf8');
+        
+        // Perbaikan pada regex
+        const regex = new RegExp(`^PRIVATE_KEY_PASSPHRASE=.*$`, 'm');
+        
+        // Escape karakter khusus dalam value
+        const escapedValue = value.replace(/[\\$'"]/g, "\\$&");
+        
+        envContent = envContent.replace(regex, `PRIVATE_KEY_PASSPHRASE="${escapedValue}"`);
+        
+        fs.writeFileSync(envPath, envContent, 'utf8');
+
+        console.log('PRIVATE_KEY_PASSPHRASE berhasil diperbarui');
+
+    } catch (error) {
+        console.log('Terjadi kesalahan:', error);
+    }
+}
 
 module.exports = {
     register,
