@@ -1,5 +1,5 @@
 const express = require('express');
-const { register, login, menu, getListMenuType, getDetails} = require('./apps');
+const { register, login, menu, getListMenuType, getDetails, addRating} = require('./apps');
 const router = express.Router();
 
 const foodsRouter = express.Router();
@@ -12,6 +12,10 @@ router.post('/register', (req, res, next) => {
 
 router.post('/login', (req, res, next) => {
     login(req, res);
+});
+
+router.post('/add-rating', (req, res, next) => {
+    addRating(req, res);
 });
 
 router.post('/menu', (req, res, next) => {

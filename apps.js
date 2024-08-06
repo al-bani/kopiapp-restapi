@@ -272,9 +272,53 @@ const getDetails = (req, res, type, id) => {
 }
 
 
+
+const addRating = (req, res) => {
+    const customer_id = req.body.customer_id;
+
+    const token = req.headers.authorization;
+    const resultVerify = verifyTokenJWT(token, customer_id);
+
+    if (resultVerify === null) {
+        return res.status(401).send({ msg: 'Unauthorized' });
+    } else {
+        token = resultVerify;
+    }
+
+    const type = req.body.type;
+    let typeColumn = '';
+
+    if (type === 'foods') {
+        typeColumn = 'food_id';
+    } else {
+        typeColumn = 'drink_id';
+    }
+
+    const query = `INSERT INTO ratings (customer_id, ${typeColumn}, rating_value, description, date_created) VALUES (${db.escape(customer_id)}, ${db.escape(req.body.type_id)}, ${db.escape(req.body.rating_value)}, ${db.escape(req.body.description)}, ${db.escape(dateNow)})`;
+
+    db.query(`SELECT * FROM ratings WHERE customer_id = ${db.escape(customer_id)} AND ${typeColumn} = ${db.escape(req.body.type_id)}`, (err, result) => {
+        if (err) {
+            return res.status(500).send({ msg: 'Internal Server Error', err });
+        }
+
+        if (result.length) {
+            return res.status(409).send({ msg: 'You already rated this product' });
+        } else {
+            db.query(query, (err, result) => {
+                if (err) {
+                    return res.status(500).send({ msg: 'Internal Server Error', err });
+                }
+
+                return res.status(200).send({ msg: 'Rating added successfully' });
+
+            }); 
+        }
+    });
+}
+
 function signJwt (customer_id){
     const privateKey = fs.readFileSync('.settings/private/private.key', 'utf8');
-    resetPK();
+    //resetPK();
     const passphrase = process.env.PRIVATE_KEY_PASSPHRASE;
     const timeExpiredToken = '1m';
 
@@ -330,32 +374,30 @@ function getTokenTimeRemaining(token) {
     }
 }
 
-function resetPK(){
-    console.log('reset PK dilakukan');
-    let value = Math.random().toString(36).substr(2, 30);
-    value = bcrypt.hashSync(value, 10);
+// function resetPK(){
+//     console.log('reset PK dilakukan');
+//     let value = Math.random().toString(36).substr(2, 30);
+//     value = bcrypt.hashSync(value, 10);
 
-    try {
-        const envPath = path.resolve(__dirname, '.env');
+//     try {
+//         const envPath = path.resolve(__dirname, '.env');
 
-        let envContent = fs.readFileSync(envPath, 'utf8');
-        
-        // Perbaikan pada regex
-        const regex = new RegExp(`^PRIVATE_KEY_PASSPHRASE=.*$`, 'm');
-        
-        // Escape karakter khusus dalam value
-        const escapedValue = value.replace(/[\\$'"]/g, "\\$&");
-        
-        envContent = envContent.replace(regex, `PRIVATE_KEY_PASSPHRASE="${escapedValue}"`);
-        
-        fs.writeFileSync(envPath, envContent, 'utf8');
+//         let envContent = fs.readFileSync(envPath, 'utf8');
 
-        console.log('PRIVATE_KEY_PASSPHRASE berhasil diperbarui');
+//         const regex = new RegExp(`^PRIVATE_KEY_PASSPHRASE=.*$`, 'm');
+        
+//         const escapedValue = value.replace(/[\\$'"]/g, "\\$&");
+        
+//         envContent = envContent.replace(regex, `PRIVATE_KEY_PASSPHRASE="${escapedValue}"`);
+        
+//         fs.writeFileSync(envPath, envContent, 'utf8');
 
-    } catch (error) {
-        console.log('Terjadi kesalahan:', error);
-    }
-}
+//         console.log('PRIVATE_KEY_PASSPHRASE berhasil diperbarui');
+
+//     } catch (error) {
+//         console.log('Terjadi kesalahan:', error);
+//     }
+// }
 
 module.exports = {
     register,
@@ -363,4 +405,5 @@ module.exports = {
     menu,
     getListMenuType,
     getDetails,
+    addRating
 }
