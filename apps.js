@@ -237,7 +237,7 @@ const getListMenuType = (req, res, type) => {
 
 const getDetails = (req, res, type, id) => {
 
-    const token = req.headers.authorization;
+    let token = req.headers.authorization;
     const resultVerify = verifyTokenJWT(token, req.body.customer_id);
 
     if (resultVerify === null) {
@@ -258,7 +258,6 @@ const getDetails = (req, res, type, id) => {
             const modifiedResult = [
                 {
                     token,
-                    time_expired : `${timeRemaining} seconds`
                 },
                 
                 ...result
@@ -271,13 +270,121 @@ const getDetails = (req, res, type, id) => {
     });
 }
 
+const getCustomerDetails = (req, res) => {
+    const customer_id = req.params.customer_id;
 
+    let token = req.headers.authorization;
+    const resultVerify = verifyTokenJWT(token, customer_id);
+
+    if (resultVerify === null) {
+        return res.status(401).send({ msg: 'Unauthorized' });
+    } else {
+        token = resultVerify;
+    }
+
+    let query = `SELECT * FROM customer WHERE customer_id = ${db.escape(customer_id)}`;
+
+    db.query(query, (err, result) => {
+        if (err) {
+            return res.status(500).send({ msg: 'Internal Server Error', err });
+        }
+         
+        if(result.length){
+           
+            return res.status(200).send({
+                token,
+                result
+            });
+           
+        } else {
+            return res.status(404).send({ msg: 'No data found' });
+        }
+    });
+}
+
+const updateCustomerDetails = (req, res) => {
+    const customer_id = req.params.customer_id;
+
+    let token = req.headers.authorization;
+    let resultVerify = verifyTokenJWT(token, customer_id);
+
+    if (resultVerify === null) {
+        return res.status(401).send({ msg: 'Unauthorized' });
+    } else {
+        token = resultVerify;
+    }
+
+    const query = `UPDATE customer SET name = ${db.escape(req.body.name)}, email = ${db.escape(req.body.email)}, phone_number = ${db.escape(req.body.phone_number)}, age = ${db.escape(req.body.age)} WHERE customer_id = ${db.escape(customer_id)}`;
+    db.query(query, (err, result) => {
+        if (err) {
+            return res.status(500).send({ msg: 'Internal Server Error', err });
+        }
+        return res.status(200).send({ msg: 'Customer details updated successfully' });
+    });
+}
+
+const updatePasswordCustomer = (req, res) => {
+    const customer_id = req.params.customer_id;
+
+    let token = req.headers.authorization;
+    let resultVerify = verifyTokenJWT(token, customer_id);
+
+    if (resultVerify === null) {
+        return res.status(401).send({ msg: 'Unauthorized' });
+    } else {
+        token = resultVerify;
+    }
+
+    db.query(`SELECT password FROM customer WHERE customer_id = ${db.escape(customer_id)}`, (err, result) => {
+        if (err) {
+            return res.status(500).send({ msg: 'Internal Server Error', err });
+        }
+        
+        if (!result.length) {
+            return res.status(404).send({ msg: 'No data found' });
+        } else {
+            bcrypt.compare(req.body.new_password, result[0].password, (err, bResult) => {
+                if (err) {
+                    return res.status(500).send({ msg: 'Internal Server Error', err });
+                } else if (bResult) {
+                    return res.status(401).send({ msg: 'New password do not match with the old password' });
+                } else {
+                    bcrypt.hash(req.body.new_password, 10, (err, hash) => {
+                        if (err) {
+                            return res.status(500).send({ msg: 'Internal Server Error', err });
+                        } else {
+                            const query = `UPDATE customer SET password = ${db.escape(hash)} WHERE customer_id = ${db.escape(customer_id)}`;
+                            db.query(query, (err, result) => {
+                                if (err) {
+                                    return res.status(500).send({ msg: 'Internal Server Error', err });
+                                } else {
+                                    return res.status(200).send({ msg: 'Password updated successfully' });
+                                }
+                            });
+                        }
+                    });
+                }
+            });
+        }
+    });
+}
+
+const getRating = (req, res) => {
+    let query = `SELECT * FROM ratings`;
+
+    db.query(query, (err, result) => {
+        if (err) {
+            return res.status(500).send({ msg: 'Internal Server Error', err });
+        }
+        return res.status(200).send(result);
+    });
+}
 
 const addRating = (req, res) => {
     const customer_id = req.body.customer_id;
 
     const token = req.headers.authorization;
-    const resultVerify = verifyTokenJWT(token, customer_id);
+    let resultVerify = verifyTokenJWT(token, customer_id);
 
     if (resultVerify === null) {
         return res.status(401).send({ msg: 'Unauthorized' });
@@ -309,7 +416,10 @@ const addRating = (req, res) => {
                     return res.status(500).send({ msg: 'Internal Server Error', err });
                 }
 
-                return res.status(200).send({ msg: 'Rating added successfully' });
+                return res.status(200).send({ 
+                    token,
+                    msg: 'Rating added successfully' 
+                });
 
             }); 
         }
@@ -320,7 +430,7 @@ function signJwt (customer_id){
     const privateKey = fs.readFileSync('.settings/private/private.key', 'utf8');
     //resetPK();
     const passphrase = process.env.PRIVATE_KEY_PASSPHRASE;
-    const timeExpiredToken = '1m';
+    const timeExpiredToken = '7d';
 
     const payload = {cid : customer_id};
     const token = jwt.sign(payload, {key: privateKey, passphrase}, {algorithm: 'RS256', expiresIn: timeExpiredToken});
@@ -405,5 +515,9 @@ module.exports = {
     menu,
     getListMenuType,
     getDetails,
-    addRating
+    addRating,
+    getCustomerDetails,
+    updateCustomerDetails,
+    getRating,
+    updatePasswordCustomer
 }
