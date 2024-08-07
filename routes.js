@@ -1,10 +1,11 @@
 const express = require('express');
-const { register, login, menu, getListMenuType, getDetails, addRating, getCustomerDetails, updateCustomerDetails, getRating, updatePasswordCustomer} = require('./apps');
+const { register, login, menu, getListMenuType, getDetails, addRating, getCustomerDetails, updateCustomerDetails, getRating, updatePasswordCustomer, sendEmailOTP} = require('./apps');
 const router = express.Router();
 
 const foodsRouter = express.Router();
 const drinksRouter = express.Router();
 const customerRouter = express.Router();
+const otpRouter = express.Router();
 
 router.post('/register', (req, res, next) => {
     register(req, res);
@@ -56,10 +57,17 @@ customerRouter.get('/:customer_id', (req, res, next) => {
     updatePasswordCustomer(req, res);
 });
 
+otpRouter.post('/email', (req, res, next) => {
+    sendEmailOTP(req, res);
+}).post('/phone-number', (req, res, next) => {
+   
+});
+
 router.use("/images/drink", express.static('assets/drinks'));
 router.use("/images/food", express.static('assets/foods'));
 router.use('/menu/foods', foodsRouter);
 router.use('/menu/drinks', drinksRouter);
 router.use('/customer', customerRouter);
+router.use('/otp', otpRouter);
 
 module.exports = router;

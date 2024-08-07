@@ -6,6 +6,8 @@ const dateNow = dayjs().format('YYYY-MM-DD HH:mm:ss');
 require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
+const nodemailer = require('nodemailer');
+let otpStorage = new Map();
 
 const register = (req, res) => {
     db.query(`SELECT email, phone_number FROM customer WHERE email = ${db.escape(req.body.email)} OR phone_number = ${db.escape(req.body.phone_number)};`,
@@ -325,6 +327,8 @@ const updateCustomerDetails = (req, res) => {
 
 const updatePasswordCustomer = (req, res) => {
     const customer_id = req.params.customer_id;
+    const otpUser = req.body.otp;
+    const signature = req.body.signature;
 
     let token = req.headers.authorization;
     let resultVerify = verifyTokenJWT(token, customer_id);
@@ -333,6 +337,12 @@ const updatePasswordCustomer = (req, res) => {
         return res.status(401).send({ msg: 'Unauthorized' });
     } else {
         token = resultVerify;
+    }
+
+    let otpVerify = verifyOTP(signature, otpUser);
+
+    if (!otpVerify.valid) {
+        return res.status(400).json({ message: otpVerify.message });
     }
 
     db.query(`SELECT password FROM customer WHERE customer_id = ${db.escape(customer_id)}`, (err, result) => {
@@ -367,6 +377,85 @@ const updatePasswordCustomer = (req, res) => {
             });
         }
     });
+}
+
+const sendEmailOTP = (req, res) => {    
+    const customer_id = req.params.customer_id;
+
+    let token = req.headers.authorization;
+    let resultVerify = verifyTokenJWT(token, customer_id);
+
+    if (resultVerify === null) {
+        return res.status(401).send({ msg: 'Unauthorized' });
+    } else {
+        token = resultVerify;
+    }
+
+    const emailDestination = req.body.email;
+    const otp = generateOTP(emailDestination);
+    const emailSender = process.env.GOOGLE_MAIL;
+    const emailPassword = process.env.GOOGLE_PASSWORD;
+    const htmlTemplate = fs.readFileSync(path.join(__dirname, '/assets/email/verification.html'), 'utf-8');
+    const htmlContent = htmlTemplate.replace('{{OTP}}', otp);
+
+    const transporter = nodemailer.createTransport({
+        host: 'smtp.gmail.com',
+        port: 587,
+        secure: false, 
+        auth: {
+          user: emailSender,
+          pass: emailPassword,
+        }
+      });
+
+    const mailConfigurations = {
+        from: emailSender,
+        to: emailDestination,
+        subject: 'kopiapp Verification Code',
+        html: htmlContent
+    };
+
+    transporter.sendMail(mailConfigurations, function(error, info){
+        if (error) throw Error(error);
+        console.log('Email Sent Successfully');
+
+        return res.status(200).send({
+            msg: 'Email sent succesfully',
+            info
+        });
+
+
+    });
+
+}
+
+function generateOTP(signature){
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiryTime = Date.now() + 1 * 60 * 1000;
+    otpStorage.set(signature, { otp, expiryTime });
+
+    return otp;
+}
+
+function verifyOTP(signature, inputOTP) {
+    const otpData = otpStorage.get(signature)
+
+    if (!otpData) {
+        return { valid: false, message: 'OTP not found' };
+    }
+
+    if (Date.now() > otpData.expiryTime) {
+        otpStorage.delete(signature); 
+        return { valid: false, message: 'OTP has been expired' };
+    }
+
+    if (String(inputOTP).trim() === String(otpData.otp).trim()) {
+        otpStorage.delete(signature); 
+        return { valid: true, message: 'OTP valid' };
+    } else {
+        return { valid: false, message: 'OTP tidak valid' };
+    }
+
 }
 
 const getRating = (req, res) => {
@@ -519,5 +608,6 @@ module.exports = {
     getCustomerDetails,
     updateCustomerDetails,
     getRating,
-    updatePasswordCustomer
+    updatePasswordCustomer,
+    sendEmailOTP
 }
