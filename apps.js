@@ -242,9 +242,9 @@ const getListMenuType = (req, res, type) => {
 }
 
 const getDetails = (req, res, type, id) => {
-
     let token = req.headers.authorization;
     const resultVerify = verifyTokenJWT(token, req.body.customer_id);
+    let like = false;
 
     if (resultVerify === null) {
         return res.status(401).send({ msg: 'Unauthorized' });
@@ -253,6 +253,17 @@ const getDetails = (req, res, type, id) => {
     }
 
     const columnId = type === 'foods' ? 'food_id' : 'drink_id';
+    let queryCheckLike = `SELECT * FROM likes WHERE ${columnId} = ${db.escape(id)} AND customer_id = ${db.escape(req.body.customer_id)}`;
+
+    db.query(queryCheckLike, (err, result) => {
+        if (err) {
+            return res.status(500).send({ msg: 'Internal Server Error', err });
+        }
+        console.log(result);
+        if(result.length){
+            like = true;
+        }
+    });
 
     let query = `SELECT * FROM ${type} WHERE ${columnId} = ${db.escape(id)}`;
 
@@ -266,7 +277,10 @@ const getDetails = (req, res, type, id) => {
                     token,
                 },
                 
-                ...result
+                ...result.map(item => ({
+                    ...item,
+                    like
+                }))
             ];
 
             return res.status(200).send(modifiedResult);
