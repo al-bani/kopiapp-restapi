@@ -335,7 +335,7 @@ const updatePasswordCustomer = async (req, res) => {
     let customer_id;
     let token;
 
-    if (req.body.isUserLogin) {
+    if (req.body.userType === 'login') {
         customer_id = req.params.customer_id;
         token = req.headers.authorization;
         let resultVerify = verifyTokenJWT(token, customer_id);
@@ -345,7 +345,7 @@ const updatePasswordCustomer = async (req, res) => {
         } else {
             token = resultVerify;
         }    
-    }  else {
+    }   else if (req.body.userType === 'forgot_password') {
         const query =`SELECT customer_id FROM customer WHERE email = ${db.escape(req.body.signature)} OR phone_number = ${db.escape(req.body.signature)}`;
         
         try {
@@ -405,7 +405,7 @@ const sendEmailOTP = async (req, res) => {
     let customer_id;
     let token;
 
-    if (req.body.isUserLogin)  {
+    if (req.body.userType === 'login')  {
         customer_id = req.params.customer_id;
         token = req.headers.authorization;
         let resultVerify = verifyTokenJWT(token, customer_id);
@@ -415,8 +415,8 @@ const sendEmailOTP = async (req, res) => {
         } else {
             token = resultVerify;
         }    
-    }  else {
-        const query =`SELECT customer_id FROM customer WHERE email = ${db.escape(req.body.email)} OR phone_number = ${db.escape(req.body.email)}`;
+    }   else if (req.body.userType === 'forgot_password') {
+        const query =`SELECT customer_id FROM customer WHERE email = ${db.escape(req.body.signature)} OR phone_number = ${db.escape(req.body.signature)}`;
         
         try {
             const result = await dbQuery(query);
@@ -431,7 +431,7 @@ const sendEmailOTP = async (req, res) => {
         }
     }
 
-    const emailDestination = req.body.email;
+    const emailDestination = req.body.signature;
     const otp = generateOTP(emailDestination);
     const emailSender = process.env.GOOGLE_MAIL;
     const emailPassword = process.env.GOOGLE_PASSWORD;
@@ -469,6 +469,62 @@ const sendEmailOTP = async (req, res) => {
 
 }
 
+const sendSmsOTP = async (req, res) => {
+    let customer_id;
+    let token;
+
+    if (req.body.userType === 'login')  {
+        customer_id = req.params.customer_id;
+        token = req.headers.authorization;
+        let resultVerify = verifyTokenJWT(token, customer_id);
+    
+        if (resultVerify === null) {
+            return res.status(401).send({ msg: 'Unauthorized' });
+        } else {    
+            token = resultVerify;
+        }    
+    }  else if (req.body.userType === 'forgot_password') {
+        const query =`SELECT customer_id FROM customer WHERE email = ${db.escape(req.body.signature)} OR phone_number = ${db.escape(req.body.signature)}`;
+        
+        try {
+            const result = await dbQuery(query);
+            if (result.length > 0) {
+                customer_id = result[0].customer_id;
+            } else {
+                return res.status(404).send({ msg: 'Customer not found' });
+            }
+
+        } catch (error) {
+            return res.status(500).send({ msg: 'Internal Server Error', err });
+        }
+    }
+
+    const phone_number = req.body.signature;
+    const otp = generateOTP(phone_number);
+    
+    const accountSid = process.env.TWILIO_ACCOUNT_SID;
+    const authToken = process.env.TWILIO_AUTH_TOKEN;
+    const phoneNumberSender = process.env.TWILIO_PHONE_NUMBER;
+
+    const client = require('twilio')(accountSid, authToken);
+
+    client.messages
+    .create({
+        body: `your 6 Digit Code for Verification Kopiapp is ${otp}`,
+        to: phone_number, 
+        from: phoneNumberSender, 
+    })
+    .then((message) => {
+        return res.status(200).send({
+            msg: 'SMS sent successfully',
+            message
+        });
+    }).catch((error) => {
+        console.log(error);
+        return res.status(500).send({ msg: 'Internal Server Error', error }); 
+      });
+}
+
 function generateOTP(signature){
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
     const expiryTime = Date.now() + 10 * 60 * 1000;
@@ -479,7 +535,6 @@ function generateOTP(signature){
 
 function verifyOTP(signature, inputOTP) {
     let otpData = otpStorage.get(signature);
-
 
     if (!otpData) {
         return { valid: false, message: 'OTP not found' };
@@ -650,5 +705,7 @@ module.exports = {
     updateCustomerDetails,
     getRating,
     updatePasswordCustomer,
-    sendEmailOTP
+    sendEmailOTP,
+    sendSmsOTP,
+    verifyOTP
 }

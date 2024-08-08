@@ -1,5 +1,5 @@
 const express = require('express');
-const { register, login, menu, getListMenuType, getDetails, addRating, getCustomerDetails, updateCustomerDetails, getRating, updatePasswordCustomer, sendEmailOTP} = require('./apps');
+const { register, login, menu, getListMenuType, getDetails, addRating, getCustomerDetails, updateCustomerDetails, getRating, updatePasswordCustomer, sendEmailOTP,sendSmsOTP, verifyOTP} = require('./apps');
 const router = express.Router();
 
 const foodsRouter = express.Router();
@@ -9,6 +9,8 @@ const otpRouter = express.Router();
 
 router.post('/register', (req, res, next) => {
     register(req, res);
+}).post('/register/verify-otp', (req, res, next) => {
+    verifyOTP(req.body.signature, req.body.otp);
 });
 
 router.post('/login', (req, res, next) => {
@@ -60,7 +62,7 @@ customerRouter.get('/:customer_id', (req, res, next) => {
 otpRouter.post('/email', (req, res, next) => {
     sendEmailOTP(req, res);
 }).post('/phone-number', (req, res, next) => {
-   
+    sendSmsOTP(req, res);
 });
 
 router.use("/images/drink", express.static('assets/drinks'));
