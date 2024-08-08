@@ -569,13 +569,21 @@ function verifyOTP(signature, inputOTP) {
 }
 
 const getRating = (req, res) => {
-    let query = `SELECT * FROM ratings`;
+    const type = req.body.type;
+    const typeId = req.body.id;
+
+    let query = `SELECT * FROM ratings WHERE ${type} = ${db.escape(typeId)}`;
 
     db.query(query, (err, result) => {
         if (err) {
             return res.status(500).send({ msg: 'Internal Server Error', err });
         }
-        return res.status(200).send(result);
+        
+        if(result.length){
+            return res.status(200).send(result);
+        } else {
+            return res.status(404).send({ msg: 'No data found' });
+        }
     });
 }
 
