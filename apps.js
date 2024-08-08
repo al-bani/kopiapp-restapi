@@ -8,9 +8,13 @@ const fs = require('fs');
 const path = require('path');
 const nodemailer = require('nodemailer');
 let otpStorage = new Map();
+const util = require('util');
+const dbQuery = util.promisify(db.query).bind(db);
 
 const register = (req, res) => {
-    db.query(`SELECT email, phone_number FROM customer WHERE email = ${db.escape(req.body.email)} OR phone_number = ${db.escape(req.body.phone_number)};`,
+    let email = String(req.body.email).toLowerCase();
+
+    db.query(`SELECT email, phone_number FROM customer WHERE email = ${db.escape(email)} OR phone_number = ${db.escape(req.body.phone_number)};`,
     (err, result) => {
         if (err){   
             return res.status(500).send({
@@ -49,7 +53,7 @@ const register = (req, res) => {
                     });
                    
                 } else {
-                    db.query(`INSERT INTO customer (name, email, phone_number, password, age, gender, date_created) VALUES (${db.escape(req.body.name)}, ${db.escape(req.body.email.toLowerCase)}, ${db.escape(req.body.phone_number)}, ${db.escape(hash)}, ${db.escape(req.body.age)}, ${db.escape(req.body.gender)}, ${db.escape(dateNow)});`,
+                    db.query(`INSERT INTO customer (name, email, phone_number, password, age, gender, date_created) VALUES (${db.escape(req.body.name)}, ${db.escape(email)}, ${db.escape(req.body.phone_number)}, ${db.escape(hash)}, ${db.escape(req.body.age)}, ${db.escape(req.body.gender)}, ${db.escape(dateNow)});`,
                         (err, result) => {
                             if (err) {
                                 return res.status(500).send({
@@ -325,18 +329,36 @@ const updateCustomerDetails = (req, res) => {
     });
 }
 
-const updatePasswordCustomer = (req, res) => {
-    const customer_id = req.params.customer_id;
+const updatePasswordCustomer = async (req, res) => {
     const otpUser = req.body.otp;
     const signature = req.body.signature;
+    let customer_id;
+    let token;
 
-    let token = req.headers.authorization;
-    let resultVerify = verifyTokenJWT(token, customer_id);
+    if (req.body.isUserLogin) {
+        customer_id = req.params.customer_id;
+        token = req.headers.authorization;
+        let resultVerify = verifyTokenJWT(token, customer_id);
+    
+        if (resultVerify === null) {
+            return res.status(401).send({ msg: 'Unauthorized' });
+        } else {
+            token = resultVerify;
+        }    
+    }  else {
+        const query =`SELECT customer_id FROM customer WHERE email = ${db.escape(req.body.signature)} OR phone_number = ${db.escape(req.body.signature)}`;
+        
+        try {
+            const result = await dbQuery(query);
+            if (result.length > 0) {
+                customer_id = result[0].customer_id;
+            } else {
+                return res.status(404).send({ msg: 'Customer not found' });
+            }
 
-    if (resultVerify === null) {
-        return res.status(401).send({ msg: 'Unauthorized' });
-    } else {
-        token = resultVerify;
+        } catch (error) {
+            return res.status(500).send({ msg: 'Internal Server Error', err });
+        }
     }
 
     let otpVerify = verifyOTP(signature, otpUser);
@@ -379,16 +401,34 @@ const updatePasswordCustomer = (req, res) => {
     });
 }
 
-const sendEmailOTP = (req, res) => {    
-    const customer_id = req.params.customer_id;
+const sendEmailOTP = async (req, res) => {    
+    let customer_id;
+    let token;
 
-    let token = req.headers.authorization;
-    let resultVerify = verifyTokenJWT(token, customer_id);
+    if (req.body.isUserLogin)  {
+        customer_id = req.params.customer_id;
+        token = req.headers.authorization;
+        let resultVerify = verifyTokenJWT(token, customer_id);
+    
+        if (resultVerify === null) {
+            return res.status(401).send({ msg: 'Unauthorized' });
+        } else {
+            token = resultVerify;
+        }    
+    }  else {
+        const query =`SELECT customer_id FROM customer WHERE email = ${db.escape(req.body.email)} OR phone_number = ${db.escape(req.body.email)}`;
+        
+        try {
+            const result = await dbQuery(query);
+            if (result.length > 0) {
+                customer_id = result[0].customer_id;
+            } else {
+                return res.status(404).send({ msg: 'Customer not found' });
+            }
 
-    if (resultVerify === null) {
-        return res.status(401).send({ msg: 'Unauthorized' });
-    } else {
-        token = resultVerify;
+        } catch (error) {
+            return res.status(500).send({ msg: 'Internal Server Error', err });
+        }
     }
 
     const emailDestination = req.body.email;
@@ -431,14 +471,15 @@ const sendEmailOTP = (req, res) => {
 
 function generateOTP(signature){
     const otp = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiryTime = Date.now() + 1 * 60 * 1000;
+    const expiryTime = Date.now() + 10 * 60 * 1000;
     otpStorage.set(signature, { otp, expiryTime });
 
     return otp;
 }
 
 function verifyOTP(signature, inputOTP) {
-    const otpData = otpStorage.get(signature)
+    let otpData = otpStorage.get(signature);
+
 
     if (!otpData) {
         return { valid: false, message: 'OTP not found' };
@@ -453,7 +494,7 @@ function verifyOTP(signature, inputOTP) {
         otpStorage.delete(signature); 
         return { valid: true, message: 'OTP valid' };
     } else {
-        return { valid: false, message: 'OTP tidak valid' };
+        return { valid: false, message: 'OTP not valid' };
     }
 
 }
