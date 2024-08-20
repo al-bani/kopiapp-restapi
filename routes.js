@@ -1,5 +1,5 @@
 const express = require('express');
-const { register, login, menu, getListMenuType, getDetails, addRating, getCustomerDetails, updateCustomerDetails, getRating, updatePasswordCustomer, sendEmailOTP,sendSmsOTP, verifyOTP} = require('./apps');
+const { register, login, menu, getListMenuType, getDetails, addRating, getCustomerDetails, updateCustomerDetails, getRating, updatePasswordCustomer, sendEmailOTP,sendSmsOTP, verifyOTP,menuAll} = require('./apps');
 const router = express.Router();
 
 const foodsRouter = express.Router();
@@ -25,7 +25,9 @@ router.post('/rating', (req, res, next) => {
 
 router.post('/menu', (req, res, next) => {
     menu(req, res);
-});
+}).post('/menu/all', (req,res,next) => {
+    menuAll(req,res)
+})
 
 foodsRouter.post('/', (req, res, next) => {
     getListMenuType(req, res, 'foods');

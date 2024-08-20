@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model Customer {
+  customer_id  Int       @id @default(autoincrement())
+  name         String
+  email        String
+  phone_number String
+  password     String
+  age          Int
+  gender       String
+  date_created DateTime
+  last_login   DateTime?
+
+  likes   Like[]
+  ratings Rating[]
+}
+
+model Drink {
+  drink_id        Int      @id @default(autoincrement())
+  name            String
+  price           Decimal  @db.Decimal(10, 2)
+  category        String
+  description     String
+  total_buying    Int
+  recomended      Boolean?
+  name_picture    String
+  condition_drink Boolean
+
+  drinkConditions DrinkCondition[]
+  likes           Like[]
+  ratings         Rating[]
+}
+
+model DrinkCondition {
+  condition_id   Int     @id @default(autoincrement())
+  condition_type String
+  price          Decimal @db.Decimal(10, 2)
+
+  drink_id Int
+  drink    Drink @relation(fields: [drink_id], references: [drink_id])
+}
+
+model Food {
+  food_id      Int     @id @default(autoincrement())
+  name         String
+  price        Decimal @db.Decimal(10, 2)
+  category     String
+  description  String
+  total_buying Int
+  recomended   Boolean
+  name_picture String
+
+  likes   Like[]
+  ratings Rating[]
+}
+
+model Like {
+  like_id Int @id @default(autoincrement())
+
+  customer_id Int
+  customer    Customer @relation(fields: [customer_id], references: [customer_id])
+
+  drink_id Int?
+  drink    Drink? @relation(fields: [drink_id], references: [drink_id])
+
+  food_id Int?
+  food    Food? @relation(fields: [food_id], references: [food_id])
+}
+
+model Rating {
+  rating_id    Int      @id @default(autoincrement())
+  rating_value Int
+  description  String
+  date_created DateTime @default(now())
+
+  customer_id Int
+  customer    Customer @relation(fields: [customer_id], references: [customer_id])
+
+  drink_id Int?
+  drink    Drink? @relation(fields: [drink_id], references: [drink_id])
+
+  food_id Int?
+  food    Food? @relation(fields: [food_id], references: [food_id])
+}
