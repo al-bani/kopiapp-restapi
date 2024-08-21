@@ -180,7 +180,7 @@ async function menuAll(req, res) {
   });
 }
 
-const menu = (req, res) => {
+async function menu(req, res) {
   let token = req.headers.authorization;
   const resultVerify = verifyTokenJWT(token, req.body.customer_id);
 
@@ -190,70 +190,74 @@ const menu = (req, res) => {
     token = resultVerify;
   }
 
-  const sort = req.body.sort;
-  let sortQuery = ``;
-
-  switch (sort) {
-    case "lowest_price":
-      sortQuery = " ORDER BY CAST(price AS DECIMAL(10,2)) ASC";
-      break;
-    case "highest_price":
-      sortQuery = " ORDER BY CAST(price AS DECIMAL(10,2)) DESC";
-      break;
-    case "popularity":
-      sortQuery = " ORDER BY total_buying DESC";
-      break;
-    case "recomended":
-      sortQuery = " AND recomended = 1 ORDER BY recomended DESC";
-      break;
-    default:
-      break;
-  }
-  // if category null, do not
   const { foods, drinks } = req.body.category;
+  const sort = req.body.sort;
+  let result;
 
-  const categoryFood = foods.filter(
-    (item) => item !== null && item !== undefined
-  );
-  const categoryDrink = drinks.filter(
-    (item) => item !== null && item !== undefined
-  );
-
-  let foodQuery = categoryFood
-    .map((data) => ` food.category = ${db.escape(data)}`)
-    .join(" OR ");
-  let drinkQuery = categoryDrink
-    .map((data) => ` drink.category = ${db.escape(data)}`)
-    .join(" OR ");
-
-  let query =
-    `SELECT * FROM drinks AS drink WHERE ` +
-    drinkQuery +
-    ` UNION ALL SELECT * FROM foods AS food WHERE` +
-    foodQuery +
-    sortQuery;
-
-  db.query(query, (err, result) => {
-    if (err) {
-      return res.status(500).send({ msg: "Internal Server Error", err });
-    }
-    if (result.length) {
-      const modifiedResult = [
-        {
-          token,
+  try {
+    if (foods && drinks === null) {
+      result = await prisma.food.findMany({
+        where: {
+          category: {
+            in: foods,
+          },
         },
-
-        ...result,
-      ];
-
-      return res.status(200).send(modifiedResult);
+      });
+    } else if (drinks && drinks === null) {
+      result = await prisma.drink.findMany({
+        where: {
+          category: {
+            in: drinks,
+          },
+        },
+      });
     } else {
-      return res.status(404).send({ msg: "No data found" });
+      const resDrink = await prisma.drink.findMany();
+      const resFood = await prisma.food.findMany();
+      result = resDrink.concat(resFood);
     }
-  });
-};
 
-const getListMenuType = (req, res, type) => {
+    switch (sort) {
+      case "lowest_price":
+        result = result
+          .slice()
+          .sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+        break;
+      case "highest_price":
+        result = result
+          .slice()
+          .sort((a, b) => parseFloat(b.price) - parseFloat(a.price));
+        break;
+      case "popularity":
+        result = result
+          .slice()
+          .sort(
+            (a, b) => parseFloat(b.total_buying) - parseFloat(a.total_buying)
+          );
+        break;
+      case "recomended":
+        result = result.filter((item) => item.recomended == 1);
+        break;
+      default:
+        return res.status(404).send({
+          msg: "please fill the sorting category",
+        });
+    }
+    return res.status(200).send({
+      token,
+      result,
+    });
+  } catch (error) {
+    return res.status(404).send({
+      msg: "server error",
+      error,
+    });
+  } finally {
+    prisma.$disconnect;
+  }
+}
+
+async function getSearchProduct(req, res) {
   let token = req.headers.authorization;
   const resultVerify = verifyTokenJWT(token, req.body.customer_id);
 
@@ -263,63 +267,35 @@ const getListMenuType = (req, res, type) => {
     token = resultVerify;
   }
 
-  const categoryData = req.body.category.filter(
-    (item) => item !== null && item !== undefined
-  );
-  const sort = req.body.sort;
+  try {
+    const resDrink = await prisma.drink.findMany({
+      select: {
+        name: true,
+        drink_id: true,
+        name_picture: true,
+      },
+    });
 
-  if (categoryData.length === 0) {
-    return res.status(400).send({ msg: "No valid data provided" });
+    const resFood = await prisma.food.findMany({
+      select: {
+        name: true,
+        food_id: true,
+        name_picture: true,
+      },
+    });
+
+    const result = resDrink.concat(resFood);
+    return res.status(200).send({
+      result,
+    });
+  } catch (error) {
+    return res.status(500).send({ msg: "Server Error", error });
+  } finally {
+    prisma.$disconnect;
   }
+}
 
-  let sortQuery = "";
-
-  switch (sort) {
-    case "lowest_price":
-      sortQuery = " ORDER BY CAST(price AS DECIMAL(10,2)) ASC";
-      break;
-    case "highest_price":
-      sortQuery = " ORDER BY CAST(price AS DECIMAL(10,2)) DESC";
-      break;
-    case "popularity":
-      sortQuery = " ORDER BY total_buying DESC";
-      break;
-    case "recomended":
-      sortQuery = " AND recomended = 1 ORDER BY recomended DESC";
-      break;
-    default:
-      break;
-  }
-
-  let query = `SELECT * FROM ${type} WHERE`;
-  query += categoryData
-    .map((data) => ` category = ${db.escape(data)}`)
-    .join(" OR ");
-  query += sortQuery;
-
-  db.query(query, (err, results) => {
-    if (err) {
-      return res.status(500).send({ msg: "Internal Server Error", err });
-    }
-    if (results.length) {
-      const modifiedResult = [
-        {
-          token,
-        },
-
-        ...results,
-      ];
-
-      return res.status(200).send(modifiedResult);
-    } else {
-      return res.status(404).send({ msg: "No data found" });
-    }
-  });
-};
-
-const searchName = () => {};
-
-const getDetails = (req, res, type, id) => {
+async function getDetails(req, res, type, id) {
   let token = req.headers.authorization;
   const resultVerify = verifyTokenJWT(token, req.body.customer_id);
   let like = false;
@@ -330,45 +306,43 @@ const getDetails = (req, res, type, id) => {
     token = resultVerify;
   }
 
-  const columnId = type === "foods" ? "food_id" : "drink_id";
-  let queryCheckLike = `SELECT * FROM likes WHERE ${columnId} = ${db.escape(
-    id
-  )} AND customer_id = ${db.escape(req.body.customer_id)}`;
-
-  db.query(queryCheckLike, (err, result) => {
-    if (err) {
-      return res.status(500).send({ msg: "Internal Server Error", err });
-    }
-    console.log(result);
-    if (result.length) {
-      like = true;
-    }
-  });
-
-  let query = `SELECT * FROM ${type} WHERE ${columnId} = ${db.escape(id)}`;
-
-  db.query(query, (err, result) => {
-    if (err) {
-      return res.status(500).send({ msg: "Internal Server Error", err });
-    }
-    if (result.length) {
-      const modifiedResult = [
-        {
-          token,
+  try {
+    const columnId = type === "food" ? "food_id" : "drink_id";
+    let resDetail;
+    if (type === "food") {
+      resDetail = await prisma.food.findUnique({
+        where: {
+          [columnId]: parseInt(id),
         },
-
-        ...result.map((item) => ({
-          ...item,
-          like,
-        })),
-      ];
-
-      return res.status(200).send(modifiedResult);
+        include: {
+          likes: true,
+        },
+      });
     } else {
-      return res.status(404).send({ msg: "No data found" });
+      resDetail = await prisma.drink.findUnique({
+        where: {
+          [columnId]: parseInt(id),
+        },
+        include: {
+          likes: true,
+        },
+      });
     }
-  });
-};
+
+    const result = [token, resDetail];
+
+    return res.status(200).send({
+      result,
+    });
+  } catch (error) {
+    return res.status(500).send({
+      msg: "Server Error",
+      error,
+    });
+  } finally {
+    prisma.$disconnect;
+  }
+}
 
 const getCustomerDetails = (req, res) => {
   const customer_id = req.params.customer_id;
@@ -848,7 +822,6 @@ module.exports = {
   register,
   login,
   menu,
-  getListMenuType,
   getDetails,
   addRating,
   getCustomerDetails,
@@ -859,4 +832,5 @@ module.exports = {
   sendSmsOTP,
   verifyOTP,
   menuAll,
+  getSearchProduct,
 };
